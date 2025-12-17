@@ -1,4 +1,5 @@
-"use client";import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+"use client";
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { CartItem, Product, ProductVariant } from '../types';
 import { api } from '../services/dataService';
 
@@ -22,56 +23,35 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [items, setItems] = useState<CartItem[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const addToCart = (product: Product, variant?: ProductVariant) => {
-    // Se tiver variante, o preço e tamanho vêm dela. Se não, do produto base.
-    const finalPrice = variant ? variant.price : product.price;
-    const finalSize = variant ? variant.name : product.size;
-    
-    // Cria um ID único para o item no carrinho.
-    // Se for variante: "prodID-varID". Se for simples: "prodID-default"
-    const cartItemId = variant ? `${product.id}-${variant.id}` : `${product.id}-default`;
+  // Helper para gerar ID único do item no carrinho
+  const getCartItemId = (item: CartItem) => {
+    return item.variant 
+      ? `${item.product.id}-${item.variant.id}` 
+      : `${item.product.id}-default`;
+  };
 
+  const addToCart = (product: Product, variant?: ProductVariant) => {
     setItems(prev => {
-      const existing = prev.find(item => {
-          // Verifica se é o mesmo produto E a mesma variante (se houver)
-          const itemVariantId = item.selectedVariant?.id;
-          const newVariantId = variant?.id;
-          return item.id === product.id && itemVariantId === newVariantId;
-      });
+      // Verifica se o item já existe (mesmo produto E mesma variante)
+      const existing = prev.find(item => 
+        item.product.id === product.id && item.variant?.id === variant?.id
+      );
 
       if (existing) {
-        // Atualiza quantidade do item existente no carrinho (usando cartItemId não é estritamente necessário na busca, mas ajuda na lógica mental)
         return prev.map(item => {
-             const itemVariantId = item.selectedVariant?.id;
-             const newVariantId = variant?.id;
-             if (item.id === product.id && itemVariantId === newVariantId) {
-                 return { ...item, quantity: item.quantity + 1 };
-             }
-             return item;
+          if (item.product.id === product.id && item.variant?.id === variant?.id) {
+            return { ...item, quantity: item.quantity + 1 };
+          }
+          return item;
         });
       }
 
-      // Adiciona novo item
-      const newItem: CartItem = {
-          ...product,
-          // Sobrescrevemos preço e tamanho para exibição no carrinho ficar correta
-          price: finalPrice, 
-          size: finalSize,
-          quantity: 1,
-          selectedVariant: variant,
-          // Adicionamos uma propriedade interna para controle se necessário, mas o array indexa pelo objeto
-      };
-      // Hack: Vamos usar uma propriedade temporária 'cartId' se precisássemos, mas aqui vamos controlar pelo find acima.
-      // Para facilitar remoção/update, vamos injetar o ID composto como propriedade auxiliar se o tipo permitisse, 
-      // mas vamos fazer a logica de remove/update baseada na mesma condicao do find.
-      
-      return [...prev, newItem];
+      // Adiciona novo item com a nova estrutura { product, quantity, variant }
+      return [...prev, { product, quantity: 1, variant }];
     });
+    
     setIsSidebarOpen(true);
   };
-
-  // Helper para identificar item único
-  const getCartItemId = (item: CartItem) => item.selectedVariant ? `${item.id}-${item.selectedVariant.id}` : `${item.id}-default`;
 
   const removeFromCart = (cartItemId: string) => {
     setItems(prev => prev.filter(item => getCartItemId(item) !== cartItemId));
@@ -91,48 +71,61 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const toggleSidebar = () => setIsSidebarOpen(prev => !prev);
 
-  const totalPrice = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  // Cálculo do total considerando preço da variante se houver
+  const totalPrice = items.reduce((acc, item) => {
+    const price = item.variant ? item.variant.price : item.product.price;
+    return acc + (price * item.quantity);
+  }, 0);
+
   const totalItems = items.reduce((acc, item) => acc + item.quantity, 0);
 
-  // Helper para formatar moeda PT-BR
   const formatPrice = (value: number) => {
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
   const checkoutWhatsApp = async () => {
-    const settings = await api.getSettings();
-    const phone = settings.whatsapp_number.replace(/\D/g, '');
-    
-    let message = `*Novo Pedido - ${settings.store_name}*\n\n`;
-    message += `------------------------------\n`;
-
-    items.forEach(item => {
-      // Nome do item com o tamanho específico se houver variante
-      const itemName = item.selectedVariant 
-        ? `${item.name} (${item.selectedVariant.name})`
-        : item.name;
-
-      message += `*${item.quantity}x ${itemName}*\n`;
+    try {
+      const settings = await api.getSettings();
+      // Garante que temos um número, se não tiver usa um fallback ou string vazia
+      const phone = settings?.whatsapp_number?.replace(/\D/g, '') || '';
+      const storeName = settings?.store_name || 'Loja';
       
-      // Se for produto simples e tiver size definido (ex: Unidade, 500ml) e não for variante
-      if(!item.selectedVariant && item.size) {
-          message += `   (Tamanho: ${item.size})\n`;
-      }
-      
-      message += `   Unitário: ${formatPrice(item.price)}\n`;
-      message += `   Subtotal: ${formatPrice(item.price * item.quantity)}\n\n`;
-    });
-    
-    message += `------------------------------\n`;
-    message += `*Valor Total: ${formatPrice(totalPrice)}*\n`;
-    message += `------------------------------\n\n`;
-    
-    message += `Taxa de entrega: A calcular\n`;
-    message += `Horário de entrega: A combinar\n\n`;
-    message += `Aguardo confirmação!`;
+      let message = `*Novo Pedido - ${storeName}*\n\n`;
+      message += `------------------------------\n`;
 
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+      items.forEach(item => {
+        const price = item.variant ? item.variant.price : item.product.price;
+        const totalItemPrice = price * item.quantity;
+        
+        // Nome do item com o tamanho específico se houver variante
+        const variantName = item.variant ? `(${item.variant.name})` : '';
+        const productName = `${item.product.name} ${variantName}`;
+
+        message += `*${item.quantity}x ${productName}*\n`;
+        
+        // Se for produto simples e tiver size definido na descrição ou campo size
+        if (!item.variant && item.product.size) {
+           message += `   (Tamanho: ${item.product.size})\n`;
+        }
+        
+        message += `   Unitário: ${formatPrice(price)}\n`;
+        message += `   Subtotal: ${formatPrice(totalItemPrice)}\n\n`;
+      });
+      
+      message += `------------------------------\n`;
+      message += `*Valor Total: ${formatPrice(totalPrice)}*\n`;
+      message += `------------------------------\n\n`;
+      
+      message += `Taxa de entrega: A calcular\n`;
+      message += `Horário de entrega: A combinar\n\n`;
+      message += `Aguardo confirmação!`;
+
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error("Erro ao gerar link do WhatsApp:", error);
+      alert("Erro ao conectar com o WhatsApp. Tente novamente.");
+    }
   };
 
   return (
