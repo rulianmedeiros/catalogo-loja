@@ -54,13 +54,13 @@ export const CartSidebar: React.FC = () => {
                     />
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
-                        <h3 className="font-semibold text-gray-800 line-clamp-1">{item.name}</h3>
+                        <h3 className="font-semibold text-gray-800 line-clamp-1">{item.product.name}</h3>
                         <p className="text-sm text-gray-500">
-                            {item.selectedVariant ? item.selectedVariant.name : (item.size || 'Único')}
+                            {item.variant ? item.variant.name : 'Único'}
                         </p>
                       </div>
                       <div className="flex items-center justify-between mt-2">
-                        <p className="font-medium text-gray-900">{formatPrice(item.price)}</p>
+                        <p className="font-medium text-gray-900">{formatPrice(item.product.price)}</p>
                         <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-2 py-1">
                           <button 
                             onClick={() => item.quantity > 1 ? updateQuantity(uniqueId, -1) : removeFromCart(uniqueId)}
