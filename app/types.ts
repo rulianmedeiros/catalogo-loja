@@ -34,3 +34,9 @@ export interface StoreSettings {
   primary_color: string;
   secondary_color: string;
 }
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+  variant?: ProductVariant | null;
+}
