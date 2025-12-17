@@ -48,8 +48,8 @@ export const CartSidebar: React.FC = () => {
                 return (
                   <div key={uniqueId} className="flex gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
                     <img 
-                      src={item.image_url} 
-                      alt={item.name} 
+                      src={item.product.image_url} 
+                      alt={item.product.name} 
                       className="w-20 h-20 object-cover rounded-lg bg-white"
                     />
                     <div className="flex-1 flex flex-col justify-between">
